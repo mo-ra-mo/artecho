@@ -1,0 +1,335 @@
+// ArtEcho — Prisma Schema
+// PostgreSQL (compatible with Supabase)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ─── Enums ───
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum PlanTier {
+  FREE
+  BASIC
+  PRO
+  PRO_PLUS
+  CREATOR
+}
+
+enum PlanStatus {
+  ACTIVE
+  EXPIRED
+  SUSPENDED
+}
+
+enum WalletEntryType {
+  CREDIT
+  DEBIT
+}
+
+enum WalletEntryReason {
+  TOPUP
+  UPLOAD_USAGE
+  PROVISIONING
+  ADJUSTMENT
+}
+
+enum InfraProvisionStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+enum LoraModelStatus {
+  PROVISIONING
+  READY
+  TRAINING
+  FAILED
+  ARCHIVED
+}
+
+enum LoraJobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+// ─── Models ───
+
+model User {
+  id               String            @id @default(cuid())
+  email            String            @unique
+  emailVerified    DateTime?
+  passwordHash     String?
+  name             String?
+  image            String?
+  role             Role              @default(USER)
+  stripeCustomerId String?           @unique
+  learningProgress Json?
+  freeAiTrainingUsed       Int       @default(0)
+  freeVideoUploadsUsed     Int       @default(0)
+  freeEducationalVideosUsed Int      @default(0)
+  walletBalanceCents       Int       @default(0)
+  storageUsedBytes         BigInt    @default(0)
+  monthlyUploadUsedBytes   BigInt    @default(0)
+  monthlyUsageResetAt      DateTime  @default(now())
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  accounts         Account[]
+  plans            Plan[]
+  sessions         LearningSession[]
+  loraModels       LoraModel[]
+  loraVideos       LoraTrainingVideo[]
+  loraJobs         LoraTrainingJob[]
+  generatedImages  GeneratedImage[]
+  walletEntries    WalletLedger[]
+  infraProvisions  InfraProvision[]
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Plan {
+  id                   String     @id @default(cuid())
+  userId               String
+  tier                 PlanTier   @default(FREE)
+  status               PlanStatus @default(ACTIVE)
+  startDate            DateTime   @default(now())
+  endDate              DateTime?
+  stripeSubscriptionId String?    @unique
+  stripePriceId        String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("plans")
+}
+
+model LearningSession {
+  id         String   @id @default(cuid())
+  userId     String
+  content    String
+  aiFeedback String?
+  createdAt  DateTime @default(now())
+
+  user   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  inputs AiInput[]
+
+  @@index([userId])
+  @@map("learning_sessions")
+}
+
+model AiInput {
+  id        String   @id @default(cuid())
+  sessionId String
+  input     String
+  output    String?
+  createdAt DateTime @default(now())
+
+  session LearningSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@map("ai_inputs")
+}
+
+model LearningVideo {
+  id        String   @id @default(cuid())
+  title     String
+  videoId   String   @unique
+  sourceUrl String?
+  embedUrl  String
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sortOrder])
+  @@map("learning_videos")
+}
+
+model LearningVideoConfig {
+  id           String   @id @default("default")
+  playlistUrl  String?
+  lastSyncedAt DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("learning_video_config")
+}
+
+model SiteSettings {
+  id             String   @id @default("default")
+  mainLogoUrl    String?
+  landingVideoUrl String?
+  ctaVideos      Json?
+  plans          Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("site_settings")
+}
+
+model LoraModel {
+  id            String          @id @default(cuid())
+  userId        String
+  name          String
+  status        LoraModelStatus @default(PROVISIONING)
+  planTier      PlanTier
+  baseModel     String          @default("sdxl-lora-lite")
+  latestVersion Int             @default(0)
+  videoCount    Int             @default(0)
+  trainRuns     Int             @default(0)
+  styleSummary  Json?
+  adapterUrl    String?
+  lastTrainedAt DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  user   User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  videos LoraTrainingVideo[]
+  jobs   LoraTrainingJob[]
+  generatedImages GeneratedImage[]
+
+  @@index([userId, createdAt])
+  @@map("lora_models")
+}
+
+model LoraTrainingVideo {
+  id        String   @id @default(cuid())
+  userId    String
+  modelId   String
+  url       String
+  mimeType  String?
+  sizeBytes Int?
+  createdAt DateTime @default(now())
+
+  user  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  model LoraModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([modelId, createdAt])
+  @@map("lora_training_videos")
+}
+
+model LoraTrainingJob {
+  id          String       @id @default(cuid())
+  userId      String
+  modelId     String
+  status      LoraJobStatus @default(QUEUED)
+  progress    Int          @default(0)
+  notes       String?
+  provider    String       @default("mvp")
+  externalJobId String?
+  providerStatusUrl String?
+  providerMeta Json?
+  queuedAt    DateTime     @default(now())
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  user  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  model LoraModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([modelId, createdAt])
+  @@map("lora_training_jobs")
+}
+
+model GeneratedImage {
+  id         String   @id @default(cuid())
+  userId     String
+  modelId    String
+  prompt     String
+  category   String?
+  imageUrl   String
+  provider   String
+  adapterUrl String?
+  isFavorite Boolean  @default(false)
+  deletedAt  DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  model LoraModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([modelId, createdAt])
+  @@index([userId, deletedAt, createdAt])
+  @@map("generated_images")
+}
+
+model WalletLedger {
+  id             String            @id @default(cuid())
+  userId         String
+  entryType      WalletEntryType
+  reason         WalletEntryReason
+  amountCents    Int
+  balanceAfter   Int
+  externalRef    String?           @unique
+  note           String?
+  metadata       Json?
+  createdAt      DateTime          @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("wallet_ledger")
+}
+
+model InfraProvision {
+  id                   String               @id @default(cuid())
+  userId               String
+  tier                 PlanTier
+  status               InfraProvisionStatus @default(QUEUED)
+  provider             String               @default("supabase")
+  targetKind           String               @default("database")
+  externalId           String?
+  endpoint             String?
+  errorMessage         String?
+  costCents            Int                  @default(0)
+  idempotencyKey       String?
+  metadata             Json?
+  queuedAt             DateTime             @default(now())
+  startedAt            DateTime?
+  finishedAt           DateTime?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@index([tier, createdAt])
+  @@map("infra_provisions")
+}

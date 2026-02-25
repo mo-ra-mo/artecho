@@ -1,0 +1,136 @@
+حالا بر اساس ساختار پیشنهادی بالا، فایل‌های زیر رو ایجاد کن (فقط ساختار خالی با export و comment):  
+- lib/prisma.ts  
+- types/index.ts (برای User, Plan, LearningSession و غیره)  
+- middleware.ts (برای حفاظت مسیرهای ادمین)  
+- app/api/auth/[...nextauth]/route.ts (placeholder)  
+فایل‌ها رو با بهترین پراکتیس Next.js 15 بنویس.
+
+
+
+
+
+لطفاً Prisma رو برای PostgreSQL (یا Supabase) در Next.js تنظیم کن.  
+شامل:  
+- schema.prisma کامل با مدل‌های زیر:  
+  - User (id, email, passwordHash, name, role: enum['USER','ADMIN'], createdAt, planId?, learningProgress Json?)  
+  - Plan (id, userId, tier: enum['FREE','BASIC','PREMIUM'], status, startDate, endDate, stripeSubscriptionId?)  
+  - LearningSession (id, userId, content Text, aiFeedback Text?, createdAt)  
+  - AiInput (id, sessionId, input Text, output Text?, createdAt)  
+- روابط (User → Plan one-to-many, User → LearningSession one-to-many)  
+- دستورات نصب و migrate رو هم بنویس.
+
+
+
+
+فایل lib/prisma.ts رو بنویس که PrismaClient رو export کنه و در development فقط یک instance داشته باشه (بهترین پراکتیس).
+
+
+
+کد کامل NextAuth v5 در Next.js App Router با Prisma و Credentials provider (email/password) بنویس.  
+شامل:  
+- hashing با bcrypt  
+- zod validation  
+- session با نقش (role)  
+- callback برای اضافه کردن role و id به session  
+- مسیرهای signIn, signOut, register  
+فایل: app/api/auth/[...nextauth]/route.ts
+
+
+
+
+middleware.ts بنویس که:  
+- مسیرهای /admin/* و /dashboard/* رو فقط برای کاربر با role: 'ADMIN' مجاز کنه  
+- کاربر لاگین نشده رو به /login ریدایرکت کنه  
+- از next-auth استفاده کنه
+
+
+
+یک صفحه /auth/register و /auth/login با فرم زیبا (shadcn/ui + Tailwind + Zod + React Hook Form) بنویس که با NextAuth کار کنه.
+
+
+
+
+
+
+ادغام Stripe در Next.js برای پلن‌های اشتراکی (basic/pro/creator).  
+شامل:  
+- ایجاد checkout session در API route /api/stripe/create-checkout  
+- webhook برای update user plan در Prisma بعد از پرداخت موفق  
+- صفحه /billing با دکمه‌های upgrade/downgrade  
+لطفاً تمام مراحل (نصب، env variables, webhook secret) رو توضیح بده.
+
+
+
+
+
+در پنل ادمین یک بخش /admin/plans بساز که تمام subscriptionهای فعال رو نشون بده (جدول با React Table) و امکان cancel subscription با Stripe داشته باشه.
+
+
+
+صفحه داشبورد /admin/dashboard بساز با کارت‌های آمار:  
+- تعداد کاربران کل/فعال  
+- تعداد پلن‌های premium  
+- تعداد sessionهای یادگیری امروز  
+از Prisma query استفاده کن و با Recharts یا ساده کارت نشون بده.
+
+
+صفحه /admin/users با جدول کاربران (React Table v8):  
+- ستون‌ها: id, email, name, role, plan, createdAt  
+- جستجو، sort، pagination  
+- دکمه edit/delete (delete با confirm)
+
+
+
+
+---------5
+
+یک API route برای /api/learning/submit بنویس که:  
+- ورودی کاربر (text یا json) رو ذخیره کنه در LearningSession  
+- یک feedback ساده با OpenAI API (مثل تحلیل سطح یادگیری) تولید کنه و ذخیره کنه  
+- env برای OPENAI_API_KEY داشته باشه
+
+
+در پنل ادمین صفحه /admin/learning بساز که تمام sessionهای یادگیری رو نشون بده (جدول + فیلتر بر اساس کاربر) و امکان دیدن ورودی/خروجی AI داشته باشه.
+
+
+
+
+----------6
+
+لیست چک امنیتی برای پنل ادمین و auth در Next.js بنویس:  
+- password hashing  
+- rate limiting  
+- CSRF/XSS  
+- session fixation  
+- protect sensitive env  
+و چطور هر کدوم رو implement کنم.
+
+
+راهنمایی deploy پروژه Next.js با پنل ادمین به Vercel:  
+- env variables  
+- webhook Stripe  
+- Prisma accelerate (اگر نیاز باشه)  
+- بهترین تنظیمات برای امنیت و سرعت
+
+
+
+
+
+35 video
+
+https://www.youtube.com/playlist?list=PLtG4P3lq8RHFRfdirLJKk822fwOxR6Zn6
+
+
+100 video
+
+https://www.youtube.com/playlist?list=PL1HIh25sbqZncbOJCwi926WCx4S8o6eHV
+
+
+7-10 video
+
+https://www.youtube.com/playlist?list=PLVQ1NCc2pJ6IMqZZ-RYEbu6Sxqk6XJklT
+
+
+
+Email: admin.panel@artecho.com
+Password: Artech0#9482

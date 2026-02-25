@@ -1,0 +1,29 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "regions": ["fra1"],
+  "crons": [
+    {
+      "path": "/api/cron/learning-videos-sync",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/usage-reconcile",
+      "schedule": "5 0 * * *"
+    }
+  ],
+  "functions": {
+    "src/app/api/stripe/webhook/route.ts": {
+      "maxDuration": 30
+    },
+    "src/app/api/learning/submit/route.ts": {
+      "maxDuration": 30
+    },
+    "src/app/api/cron/learning-videos-sync/route.ts": {
+      "maxDuration": 30
+    },
+    "src/app/api/cron/usage-reconcile/route.ts": {
+      "maxDuration": 30
+    }
+  }
+}
