@@ -281,8 +281,6 @@ export function ScrollVideoHero({ src = DEFAULT_DESKTOP_INTRO_VIDEO }) {
   const [showLogo, setShowLogo] = useState(false);
   const [navigatingAway, setNavigatingAway] = useState(false);
   const [isMobileLike, setIsMobileLike] = useState(false);
-  const [logoLoadedSrc, setLogoLoadedSrc] = useState("");
-  const [videoPreloadMap, setVideoPreloadMap] = useState({});
 
   // Auth form state
   const [authTab, setAuthTab] = useState("login");
@@ -441,70 +439,6 @@ export function ScrollVideoHero({ src = DEFAULT_DESKTOP_INTRO_VIDEO }) {
   }, []);
 
   useEffect(() => {
-    let active = true;
-    const img = new window.Image();
-    img.onload = () => {
-      if (active) setLogoLoadedSrc(brandLogoSrc);
-    };
-    img.onerror = () => {
-      if (active) setLogoLoadedSrc(brandLogoSrc);
-    };
-    img.src = brandLogoSrc;
-    return () => {
-      active = false;
-    };
-  }, [brandLogoSrc]);
-
-  useEffect(() => {
-    let active = true;
-    const videoSources = [
-      activeLandingVideoSrc,
-      ...ctaVideos.slice(0, isMobileLike ? 2 : 5),
-    ].filter(
-      (src) => typeof src === "string" && src.trim().length > 0,
-    );
-    const cleaners = [];
-
-    const markReady = (src) => {
-      if (!active) return;
-      setVideoPreloadMap((prev) => (prev[src] ? prev : { ...prev, [src]: true }));
-    };
-
-    videoSources.forEach((src) => {
-      if (videoPreloadMap[src]) return;
-
-      const preloadVideo = document.createElement("video");
-      preloadVideo.preload = "metadata";
-      preloadVideo.muted = true;
-      preloadVideo.playsInline = true;
-      preloadVideo.src = src;
-
-      const onReady = () => markReady(src);
-      const onError = () => {
-        logVideoRuntime("warn", "Preload failed; runtime fallback will handle.", {
-          phase: "preload",
-          src,
-        });
-        markReady(src);
-      };
-
-      preloadVideo.addEventListener("loadeddata", onReady, { once: true });
-      preloadVideo.addEventListener("error", onError, { once: true });
-      preloadVideo.load();
-
-      cleaners.push(() => {
-        preloadVideo.removeEventListener("loadeddata", onReady);
-        preloadVideo.removeEventListener("error", onError);
-      });
-    });
-
-    return () => {
-      active = false;
-      cleaners.forEach((fn) => fn());
-    };
-  }, [activeLandingVideoSrc, ctaVideos, isMobileLike, videoPreloadMap]);
-
-  useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
@@ -576,17 +510,7 @@ export function ScrollVideoHero({ src = DEFAULT_DESKTOP_INTRO_VIDEO }) {
   const showCta = videoEnded;
   const [btnReady, setBtnReady] = useState(false);
   const hideIntroOnMobile = isMobileLike && showCta;
-  const requiredVideoSources = [
-    activeLandingVideoSrc,
-    ...ctaVideos.slice(0, isMobileLike ? 2 : 5),
-  ].filter(
-    (src) => typeof src === "string" && src.trim().length > 0,
-  );
-  const allVideosReady =
-    requiredVideoSources.length === 0 ||
-    requiredVideoSources.every((src) => videoPreloadMap[src]);
-  const logoReady = logoLoadedSrc === brandLogoSrc;
-  const allVisualsReady = logoReady && allVideosReady && videoReady;
+  const allVisualsReady = videoReady;
 
   const ctaRef = useRef(null);
 
@@ -982,7 +906,7 @@ export function ScrollVideoHero({ src = DEFAULT_DESKTOP_INTRO_VIDEO }) {
                         playsInline
                         loop
                         autoPlay={false}
-                        preload="metadata"
+                        preload="none"
                         onError={(e) =>
                           handleCtaVideoError(
                             e,
@@ -1042,7 +966,7 @@ export function ScrollVideoHero({ src = DEFAULT_DESKTOP_INTRO_VIDEO }) {
                           playsInline
                           loop
                           autoPlay={!isMobileLike}
-                          preload="metadata"
+                          preload="none"
                           onError={(e) =>
                             handleCtaVideoError(
                               e,
@@ -1096,7 +1020,7 @@ export function ScrollVideoHero({ src = DEFAULT_DESKTOP_INTRO_VIDEO }) {
                           playsInline
                           loop
                           autoPlay={!isMobileLike}
-                          preload="metadata"
+                          preload="none"
                           onError={(e) =>
                             handleCtaVideoError(
                               e,
