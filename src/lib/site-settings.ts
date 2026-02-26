@@ -1,14 +1,25 @@
 import { getPlanPriceLabel } from "@/lib/plan-pricing";
 
+const VIDEO_CDN_BASE_URL = (process.env.NEXT_PUBLIC_VIDEO_CDN_BASE_URL || "")
+  .trim()
+  .replace(/\/+$/, "");
+const withVideoBase = (path: string) =>
+  VIDEO_CDN_BASE_URL ? `${VIDEO_CDN_BASE_URL}${path}` : path;
+
 export const DEFAULT_SITE_SETTINGS = {
   mainLogoUrl: "/i-6-1.png",
-  landingVideoUrl: "/videos/intro.mp4",
+  landingVideoUrl: VIDEO_CDN_BASE_URL
+    ? `${VIDEO_CDN_BASE_URL}/intro.mp4`
+    : "/videos/intro.mp4",
+  landingVideoMobileUrl: VIDEO_CDN_BASE_URL
+    ? `${VIDEO_CDN_BASE_URL}/intro-mobile.mp4`
+    : "/videos/intro-mobile.mp4",
   ctaVideos: [
-    "/videos/cta-1.mp4",
-    "/videos/cta-2.mp4",
-    "/videos/cta-3.mp4",
-    "/videos/cta-4.mp4",
-    "/videos/cta-5.mp4",
+    withVideoBase("/videos/cta-1.mp4"),
+    withVideoBase("/videos/cta-2.mp4"),
+    withVideoBase("/videos/cta-3.mp4"),
+    withVideoBase("/videos/cta-4.mp4"),
+    withVideoBase("/videos/cta-5.mp4"),
   ],
   plans: [
     {
@@ -143,6 +154,7 @@ function ensurePlans(value: unknown) {
 export function mergeSiteSettings(raw: {
   mainLogoUrl?: string | null;
   landingVideoUrl?: string | null;
+  landingVideoMobileUrl?: string | null;
   ctaVideos?: unknown;
   plans?: unknown;
 } | null) {
@@ -150,6 +162,8 @@ export function mergeSiteSettings(raw: {
     mainLogoUrl: raw?.mainLogoUrl || DEFAULT_SITE_SETTINGS.mainLogoUrl,
     landingVideoUrl:
       raw?.landingVideoUrl || DEFAULT_SITE_SETTINGS.landingVideoUrl,
+    landingVideoMobileUrl:
+      raw?.landingVideoMobileUrl || DEFAULT_SITE_SETTINGS.landingVideoMobileUrl,
     ctaVideos: ensureStringArray(raw?.ctaVideos, DEFAULT_SITE_SETTINGS.ctaVideos),
     plans: ensurePlans(raw?.plans),
   };

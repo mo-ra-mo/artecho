@@ -5,7 +5,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-black overflow-x-hidden">
       <LandingNav />
-      <ScrollVideoHero src="/videos/intro.mp4" />
+      <ScrollVideoHero />
     </main>
   );
 }

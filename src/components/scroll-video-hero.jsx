@@ -68,13 +68,42 @@ const EDGES = [
   [12, 9],
 ];
 
+const VIDEO_CDN_BASE_URL = (process.env.NEXT_PUBLIC_VIDEO_CDN_BASE_URL || "")
+  .trim()
+  .replace(/\/+$/, "");
+const VIDEO_DEBUG = /^(1|true|yes|on)$/i.test(
+  process.env.NEXT_PUBLIC_VIDEO_DEBUG || "",
+);
+const withVideoBase = (path) =>
+  VIDEO_CDN_BASE_URL ? `${VIDEO_CDN_BASE_URL}${path}` : path;
+const DEFAULT_DESKTOP_INTRO_VIDEO = VIDEO_CDN_BASE_URL
+  ? `${VIDEO_CDN_BASE_URL}/intro.mp4`
+  : "/videos/intro.mp4";
+const DEFAULT_MOBILE_INTRO_VIDEO = VIDEO_CDN_BASE_URL
+  ? `${VIDEO_CDN_BASE_URL}/intro-mobile.mp4`
+  : "/videos/intro-mobile.mp4";
 const DEFAULT_CTA_VIDEOS = [
+  withVideoBase("/videos/cta-1.mp4"),
+  withVideoBase("/videos/cta-2.mp4"),
+  withVideoBase("/videos/cta-3.mp4"),
+  withVideoBase("/videos/cta-4.mp4"),
+  withVideoBase("/videos/cta-5.mp4"),
+];
+const LOCAL_DESKTOP_INTRO_VIDEO = "/videos/intro.mp4";
+const LOCAL_MOBILE_INTRO_VIDEO = "/videos/intro-mobile.mp4";
+const LOCAL_CTA_VIDEOS = [
   "/videos/cta-1.mp4",
   "/videos/cta-2.mp4",
   "/videos/cta-3.mp4",
   "/videos/cta-4.mp4",
   "/videos/cta-5.mp4",
 ];
+
+function logVideoRuntime(level, message, meta = {}) {
+  if (!VIDEO_DEBUG) return;
+  const logger = level === "error" ? console.error : console.warn;
+  logger(`[ArtEcho][video] ${message}`, meta);
+}
 
 function NetworkGrid() {
   const nodes = BASE_NODES;
@@ -235,14 +264,17 @@ function AuthSlider({ authTab, setAuthTab }) {
   );
 }
 
-export function ScrollVideoHero({ src = "/videos/intro.mp4" }) {
+export function ScrollVideoHero({ src = DEFAULT_DESKTOP_INTRO_VIDEO }) {
   const router = useRouter();
   const { data: session } = useSession();
   const isLoggedIn = !!session?.user;
   const videoRef = useRef(null);
   const [landingVideoSrc, setLandingVideoSrc] = useState(src);
+  const [mobileLandingVideoSrc, setMobileLandingVideoSrc] = useState(
+    DEFAULT_MOBILE_INTRO_VIDEO,
+  );
   const [brandLogoSrc, setBrandLogoSrc] = useState("/i-6-1.png");
-  const ctaVideos = DEFAULT_CTA_VIDEOS;
+  const [ctaVideos, setCtaVideos] = useState(DEFAULT_CTA_VIDEOS);
   const [videoError, setVideoError] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
   const [videoEnded, setVideoEnded] = useState(false);
@@ -260,16 +292,49 @@ export function ScrollVideoHero({ src = "/videos/intro.mp4" }) {
   const [authError, setAuthError] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [showAuthPw, setShowAuthPw] = useState(false);
+  const activeLandingVideoSrc = isMobileLike ? mobileLandingVideoSrc : landingVideoSrc;
 
-  const handleCtaVideoError = useCallback((e, fallbackUrl) => {
+  const handleCtaVideoError = useCallback((e, fallbackCandidates, contextLabel) => {
     const el = e.currentTarget;
     if (!el) return;
     const currentSrc = el.getAttribute("src") || "";
-    const normalizedFallback = (fallbackUrl || "").trim();
-    if (!normalizedFallback || currentSrc === normalizedFallback) return;
-    el.setAttribute("src", normalizedFallback);
+    const attempted = new Set(
+      (el.dataset.fallbackTried || "")
+        .split("|")
+        .map((item) => item.trim())
+        .filter(Boolean),
+    );
+    const candidates = (Array.isArray(fallbackCandidates) ? fallbackCandidates : [])
+      .map((item) => (typeof item === "string" ? item.trim() : ""))
+      .filter(Boolean);
+    const nextFallback = candidates.find(
+      (candidate) => candidate !== currentSrc && !attempted.has(candidate),
+    );
+
+    logVideoRuntime("warn", "Video load failed; checking fallback.", {
+      context: contextLabel,
+      failedSrc: currentSrc,
+      candidates,
+    });
+
+    if (!nextFallback) {
+      logVideoRuntime("error", "No fallback candidate available.", {
+        context: contextLabel,
+        failedSrc: currentSrc,
+        attempted: Array.from(attempted),
+      });
+      return;
+    }
+
+    attempted.add(nextFallback);
+    el.dataset.fallbackTried = Array.from(attempted).join("|");
+    el.setAttribute("src", nextFallback);
     el.load();
     el.play().catch(() => {});
+    logVideoRuntime("warn", "Fallback applied.", {
+      context: contextLabel,
+      fallbackSrc: nextFallback,
+    });
   }, []);
 
   const handleGoogleSignIn = useCallback(() => {
@@ -338,10 +403,24 @@ export function ScrollVideoHero({ src = "/videos/intro.mp4" }) {
         if (typeof settings?.landingVideoUrl === "string" && settings.landingVideoUrl.trim()) {
           setLandingVideoSrc(settings.landingVideoUrl);
         }
+        if (
+          typeof settings?.landingVideoMobileUrl === "string" &&
+          settings.landingVideoMobileUrl.trim()
+        ) {
+          setMobileLandingVideoSrc(settings.landingVideoMobileUrl);
+        }
         if (typeof settings?.mainLogoUrl === "string" && settings.mainLogoUrl.trim()) {
           setBrandLogoSrc(settings.mainLogoUrl);
         }
-        // CTA videos are intentionally hardcoded by request.
+        if (Array.isArray(settings?.ctaVideos)) {
+          const normalized = Array.from({ length: 5 }, (_, i) => {
+            const candidate = settings.ctaVideos[i];
+            return typeof candidate === "string" && candidate.trim()
+              ? candidate
+              : DEFAULT_CTA_VIDEOS[i];
+          });
+          setCtaVideos(normalized);
+        }
       })
       .catch(() => {});
     return () => {
@@ -378,7 +457,10 @@ export function ScrollVideoHero({ src = "/videos/intro.mp4" }) {
 
   useEffect(() => {
     let active = true;
-    const videoSources = [landingVideoSrc, ...ctaVideos].filter(
+    const videoSources = [
+      activeLandingVideoSrc,
+      ...ctaVideos.slice(0, isMobileLike ? 2 : 5),
+    ].filter(
       (src) => typeof src === "string" && src.trim().length > 0,
     );
     const cleaners = [];
@@ -392,13 +474,19 @@ export function ScrollVideoHero({ src = "/videos/intro.mp4" }) {
       if (videoPreloadMap[src]) return;
 
       const preloadVideo = document.createElement("video");
-      preloadVideo.preload = "auto";
+      preloadVideo.preload = "metadata";
       preloadVideo.muted = true;
       preloadVideo.playsInline = true;
       preloadVideo.src = src;
 
       const onReady = () => markReady(src);
-      const onError = () => markReady(src);
+      const onError = () => {
+        logVideoRuntime("warn", "Preload failed; runtime fallback will handle.", {
+          phase: "preload",
+          src,
+        });
+        markReady(src);
+      };
 
       preloadVideo.addEventListener("loadeddata", onReady, { once: true });
       preloadVideo.addEventListener("error", onError, { once: true });
@@ -414,7 +502,7 @@ export function ScrollVideoHero({ src = "/videos/intro.mp4" }) {
       active = false;
       cleaners.forEach((fn) => fn());
     };
-  }, [landingVideoSrc, ctaVideos, videoPreloadMap]);
+  }, [activeLandingVideoSrc, ctaVideos, isMobileLike, videoPreloadMap]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -483,12 +571,15 @@ export function ScrollVideoHero({ src = "/videos/intro.mp4" }) {
       clearTimeout(failSafeTimer);
       video.removeEventListener("canplay", onCanPlay);
     };
-  }, [landingVideoSrc, isMobileLike]);
+  }, [activeLandingVideoSrc, isMobileLike]);
 
   const showCta = videoEnded;
   const [btnReady, setBtnReady] = useState(false);
   const hideIntroOnMobile = isMobileLike && showCta;
-  const requiredVideoSources = [landingVideoSrc, ...ctaVideos].filter(
+  const requiredVideoSources = [
+    activeLandingVideoSrc,
+    ...ctaVideos.slice(0, isMobileLike ? 2 : 5),
+  ].filter(
     (src) => typeof src === "string" && src.trim().length > 0,
   );
   const allVideosReady =
@@ -543,7 +634,7 @@ export function ScrollVideoHero({ src = "/videos/intro.mp4" }) {
               <video
                 ref={videoRef}
                 className="h-full w-full object-contain"
-                src={landingVideoSrc}
+                src={activeLandingVideoSrc}
                 muted
                 playsInline
                 preload="metadata"
@@ -553,6 +644,37 @@ export function ScrollVideoHero({ src = "/videos/intro.mp4" }) {
                   setTimeout(() => setVideoEnded(true), 2000);
                 }}
                 onError={() => {
+                  if (isMobileLike && activeLandingVideoSrc !== landingVideoSrc) {
+                    logVideoRuntime("warn", "Mobile intro failed; falling back to desktop intro.", {
+                      failedSrc: activeLandingVideoSrc,
+                      fallbackSrc: landingVideoSrc,
+                    });
+                    setMobileLandingVideoSrc(landingVideoSrc);
+                    return;
+                  }
+                  if (activeLandingVideoSrc !== LOCAL_DESKTOP_INTRO_VIDEO) {
+                    logVideoRuntime("warn", "Primary intro failed; falling back to local intro.", {
+                      failedSrc: activeLandingVideoSrc,
+                      fallbackSrc: LOCAL_DESKTOP_INTRO_VIDEO,
+                    });
+                    setLandingVideoSrc(LOCAL_DESKTOP_INTRO_VIDEO);
+                    return;
+                  }
+                  if (isMobileLike && mobileLandingVideoSrc !== LOCAL_MOBILE_INTRO_VIDEO) {
+                    logVideoRuntime(
+                      "warn",
+                      "Mobile intro fallback failed; trying local mobile intro.",
+                      {
+                        failedSrc: mobileLandingVideoSrc,
+                        fallbackSrc: LOCAL_MOBILE_INTRO_VIDEO,
+                      },
+                    );
+                    setMobileLandingVideoSrc(LOCAL_MOBILE_INTRO_VIDEO);
+                    return;
+                  }
+                  logVideoRuntime("error", "Intro unavailable after fallbacks; skipping intro.", {
+                    failedSrc: activeLandingVideoSrc,
+                  });
                   // If landing video is missing on deploy, skip intro gracefully.
                   setVideoError(true);
                   setVideoReady(true);
@@ -861,7 +983,13 @@ export function ScrollVideoHero({ src = "/videos/intro.mp4" }) {
                         loop
                         autoPlay={false}
                         preload="metadata"
-                          onError={(e) => handleCtaVideoError(e, DEFAULT_CTA_VIDEOS[0])}
+                        onError={(e) =>
+                          handleCtaVideoError(
+                            e,
+                            [LOCAL_CTA_VIDEOS[0], DEFAULT_CTA_VIDEOS[0]],
+                            "cta-mobile-preview-0",
+                          )
+                        }
                       />
                       <div className="absolute inset-0 bg-linear-to-t from-black/85 via-black/40 to-black/20" />
                       <div className="absolute bottom-2 left-2 right-2">
@@ -915,7 +1043,13 @@ export function ScrollVideoHero({ src = "/videos/intro.mp4" }) {
                           loop
                           autoPlay={!isMobileLike}
                           preload="metadata"
-                          onError={(e) => handleCtaVideoError(e, DEFAULT_CTA_VIDEOS[i])}
+                          onError={(e) =>
+                            handleCtaVideoError(
+                              e,
+                              [LOCAL_CTA_VIDEOS[i], DEFAULT_CTA_VIDEOS[i]],
+                              `cta-top-${i}`,
+                            )
+                          }
                         />
                         <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/35 to-black/30" />
                         <div
@@ -963,7 +1097,13 @@ export function ScrollVideoHero({ src = "/videos/intro.mp4" }) {
                           loop
                           autoPlay={!isMobileLike}
                           preload="metadata"
-                          onError={(e) => handleCtaVideoError(e, DEFAULT_CTA_VIDEOS[i + 2])}
+                          onError={(e) =>
+                            handleCtaVideoError(
+                              e,
+                              [LOCAL_CTA_VIDEOS[i + 2], DEFAULT_CTA_VIDEOS[i + 2]],
+                              `cta-bottom-${i + 2}`,
+                            )
+                          }
                         />
                         <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/35 to-black/30" />
                         <div className="absolute bottom-1.5 left-1.5 right-1.5 sm:bottom-2.5 sm:left-2.5 sm:right-2.5 z-10">
